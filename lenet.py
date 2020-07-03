@@ -13,7 +13,7 @@ class Sigmoid():
     def __init__(self):
         pass
 
-    def forward(self, x):
+    def forward(self,x):
         return 1.0 / (1.0 + np.exp(-x))
 
     def backward(self, z):
@@ -24,53 +24,99 @@ class Relu():
     def __init__(self):
         pass
 
-    def forward(self, x):
+    def forward(self,x):
         return (x>=0)*x
         
-    def backward(self, z):
+    def backward(self,z):
         return (z>0)*1#z为函数值
 #Conv类
-class Conv():#conv的语法还需要改进，忽略了层数channel
-    def __init__(self,num,size,activation):
+class Conv():
+    def __init__(self,num,size,channel,activation):#这里默认stride为1
         self.num=num
         self.size=size
+        self.channel=channel
         self.activation=activation
-        self.conv=np.random.random((num,size,size))
+        self.kernel=np.random.random((num,size,size,channel))#N*W*H*C
     def forward(self,origin):
-        self.forward=np.zeros(self.num,origin.shape[0]-self.size+1,origin.shape[1]-self.size+1)
+        self.post=origin#W*H*C
+        self._forward=np.zeros((origin.shape[0]-self.size+1,origin.shape[1]-self.size+1,self.num))
         for i in range(0,self.num):
             for j in range(0,origin.shape[0]-(self.size-1)):
                 for k in range(0,origin.shape[1]-(self.size-1)):
-                    sum=np.sum(origin[j:(j+self.size-1),k:(k+self.size-1)]*self.conv[i])
-                    self.forward[i,j,k]=self.activation.forward(sum)
-        return self.forward
-    
+                    conv_sum=np.sum(origin[j:(j+self.size),k:(k+self.size)]*self.kernel[i])
+                    self._forward[j,k,i]=self.activation.forward(conv_sum)
+        return self._forward
+    def backward(self,error,learning_rate):
+        self.db=error*self.activation.backward(self._forward)#W*H*C
+        self.dw=np.zeros(self.kernel.shape)
+        for i in range(0,self.num):#self.post与self.db的卷积
+            for j in range(0,self.post.shape[0]-(self.db.shape[0]-1)):
+                for k in range(0,self.post.shape[1]-(self.db.shape[0]-1)):
+                    if(len(self.post.shape)==2):
+                        self.dw[i,j,k]=np.sum(self.post[j:(j+self.db.shape[0]),k:(k+self.db.shape[0])]*self.db[:,:,i])
+                    else:
+                        for p in range(self.post.shape[2]):
+                            self.dw[i,j,k,p]=np.sum(self.post[j:(j+self.db.shape[0]),k:(k+self.db.shape[0]),p]*self.db[:,:,i])
+        self.backerror=np.zeros(self.post.shape)
+        self.dB=np.zeros((self.db.shape[0]+2,self.db.shape[1]+2,self.db.shape[2]))
+        self.dB[1:self.dB.shape[0]-1,1:self.dB.shape[1]-1]=self.db#zero_pad=1
+        #卷积核的旋转
+        self.pi_kernel=np.zeros((self.kernel.shape[3],self.kernel.shape[1],self.kernel.shape[2],self.kernel.shape[0]))#(input_channel,W,H,output_channel)
+        for k in range(self.kernel.shape[0]):
+            for i in range(self.kernel.shape[1]):
+                for j in range(self.kernel.shape[2]):
+                    self.pi_kernel[:,self.kernel.shape[1]-1-i,self.kernel.shape[2]-1-j,k]=self.kernel[k,i,j]
+        self.backerror=np.zeros((self.post.shape[0],self.post.shape[1],self.channel))#W*H*C
+        for i in range(0,self.pi_kernel.shape[0]):#self.dB与self.pi_kernel的卷积
+            for j in range(0,self.dB.shape[0]-(self.pi_kernel.shape[1]-1)):
+                for k in range(0,self.dB.shape[1]-(self.pi_kernel.shape[2]-1)):
+                    self.backerror[j,k,i]=np.sum(self.dB[j:(j+self.pi_kernel.shape[1]),k:(k+self.pi_kernel.shape[1])]*self.pi_kernel[i])
+        self.kernel-=learning_rate*self.dw#更新权值
+        return self.backerror
 #Avgpool类
-class Avgpool():#同样忽略了层数
+class Avgpool():
     def __init__(self,size):
         self.size=size
     def forward(self,origin):
-        self.forward=np.zeros((origin.shape[0]/2,origin.shape[1]/2))
-        for i in range(0,origin.shape[0]/2):
-            for j in range(0,origin.shape[1]/2):
-                self.forward[i,j]=np.mean(origin[2*i:(2*i+1),2*j:(2*j+1)])
-        return self.forward
-
+        self.input=origin
+        self._forward=np.zeros((int(origin.shape[0]/self.size),int(origin.shape[1]/self.size),origin.shape[2]))#origin的维度是W*H*C
+        for i in range(0,int(origin.shape[0]/self.size)):
+            for j in range(0,int(origin.shape[1]/self.size)):
+                self._forward[i,j]=np.mean(origin[self.size*i:(self.size*i+self.size),self.size*j:(self.size*j+self.size)])
+        return self._forward
+    def backward(self,error):
+        self.backerror=np.zeros(self.input.shape)
+        for i in range(int(self.input.shape[0]/self.size)):
+            for j in range(int(self.input.shape[1]/self.size)):
+                self.backerror[self.size*i:(self.size*i+self.size),self.size*j:(self.size*j+self.size)]=error[i,j]/(self.size**2)
+        return self.backerror
+#Softmax类
+class Softmax():
+    def __init__(self,length):
+        self.length=length
+    def forward(self,vector):#vector是一个长度为length的行向量
+        self.post=vector
+        softmax_sum=np.sum(np.exp(vector))
+        self._forward= np.zeros(self.length) if softmax_sum==0 else np.array([np.exp(val)/softmax_sum for val in vector])
+        return self._forward
+    def backward(self,error):#error是行向量
+        self.backerror=((self._forward.T)*(np.eye(self.post.shape[0])-self._forward)).dot(error.T)
+        return self.backerror
 #Fc类
 class Fc():
-    def __init__(selk,innum,outnum,activation):
+    def __init__(self,innum,outnum,activation):
         self.innum=innum
         self.outnum=outnum
         self.activation=activation
-        self.w=np.random.random((innum,outnum))
+        self.w=np.random.random((innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
     def forward(self,origin):
-        self.post=origin
-        self.forward=self.activation.forward(self.post.dot(w))
-        return self.forward
+        self.post=origin#post应是一个行向量
+        self._forward=self.activation.forward(self.post.dot(self.w))
+        return self._forward
     def backward(self,error,learning_rate):
-        self.miderror=error*self.activation.backward(self.forward)
-        self.dw=self.post.T.dot(self.miderror)
-        self.backerror=self.w.dot(self.miderror.T)
+        self.miderror=error*self.activation.backward(self._forward)
+        self.dw=self.post.reshape((self.post.shape[0],1)).dot(self.miderror.reshape(1,self.miderror.shape[0]))
+        self.backerror=(self.w.dot(self.miderror.T)).T
         self.w-=learning_rate*self.dw
         return self.backerror
 ## 在原 LeNet-5上进行少许修改后的网路结构
@@ -104,12 +150,15 @@ class LeNet(object):
         并给 Conv 类 与 FC 类对象赋予随机初始值
         注意： 不要求做 BatchNormlize 和 DropOut, 但是有兴趣的可以尝试
         '''
-        self.activation=Relu
-        self.conv[0]=Conv(6,5,self.activation)
-        self.conv[1]=Conv(16,5,self.activation)
-        self.avg[0]=Avgpool(2)
-        self.avg[1]=Avgpool(2)
-        
+        self.activation=Relu()
+        self.conv_1=Conv(6,5,1,self.activation)
+        self.conv_2=Conv(16,5,6,self.activation)
+        self.avg_1=Avgpool(2)
+        self.avg_2=Avgpool(2)
+        self.fc_1=Fc(256,128,self.activation)
+        self.fc_2=Fc(128,64,self.activation)
+        self.fc_3=Fc(64,10,self.activation)
+        self.softmax=Softmax(10)
         
         print("initialize")
 
@@ -126,7 +175,25 @@ class LeNet(object):
         Arguments:
             x {np.array} --shape为 B，C，H，W
         """
-        return 0
+        self.conv_1_forward=[]
+        self.avg_1_forward=[]
+        self.conv_2_forward=[]
+        self.avg_2_forward=[]
+        self.fc_1_forward=[]
+        self.fc_2_forward=[]
+        self.fc_3_forward=[]
+        self.softmax_forward=[]
+
+        for i in range(x.shape[0]):
+            self.conv_1_forward.append(self.conv_1.forward(x[i]))
+            self.avg_1_forward.append(self.avg_1.forward(self.conv_1_forward[i]))
+            self.conv_2_forward.append(self.conv_2.forward(self.avg_1_forward[i]))
+            self.avg_2_forward.append(self.avg_2.forward(self.conv_2_forward[i]))
+            self.fc_1_forward.append(self.fc_1.forward(self.avg_2_forward[i].reshape(256)))#flatten
+            self.fc_2_forward.append(self.fc_2.forward(self.fc_1_forward[i]))
+            self.fc_3_forward.append(self.fc_3.forward(self.fc_2_forward[i]))
+            self.softmax_forward.append(self.softmax.forward(self.fc_3_forward[i]))
+        return self.softmax_forward#是一个列表包含所有样本的one-hot
 
     def backward(self, error, lr=1.0e-3):
         """根据error，计算梯度，并更新model中的权值
@@ -134,8 +201,24 @@ class LeNet(object):
             error {np array} -- 即计算得到的loss结果
             lr {float} -- 学习率，可以在代码中设置衰减方式
         """
-        pass
-
+        self.conv_1_backward=[]
+        self.avg_1_backward=[]
+        self.conv_2_backward=[]
+        self.avg_2_backward=[]
+        self.fc_1_backward=[]
+        self.fc_2_backward=[]
+        self.fc_3_backward=[]
+        self.softmax_backward=[]
+        for i in range(error.shape[0]):#这里error的shape为（N,10)
+            self.softmax_backward.append(self.softmax.backward(error[i]))
+            self.fc_3_backward.append(self.fc_3.backward(self.softmax_backward[i],lr))
+            self.fc_2_backward.append(self.fc_2.backward(self.fc_3_backward[i],lr))
+            self.fc_1_backward.append(self.fc_1.backward(self.fc_2_backward[i],lr))
+            self.avg_2_backward.append(self.avg_2.backward(self.fc_1_backward[i].reshape((4,4,16))))
+            self.conv_2_backward.append(self.conv_2.backward(self.avg_2_backward[i],lr))
+            self.avg_1_backward.append(self.avg_1.backward(self.conv_2_backward[i]))
+            self.conv_1_backward.append(self.conv_1.backward(self.avg_1_backward[i],lr))
+        
     def evaluate(self, x, labels):
         """
         x是测试样本， shape 是BCHW
@@ -149,7 +232,12 @@ class LeNet(object):
             x {np array} -- BCWH
             labels {np array} -- B x 10
         """
-        return 0
+        counter=0
+        result=self.forward(x)
+        for i in range(x.shape[0]):    
+            if(np.sqrt(np.sum((result[i]-labels[i])**2))<=1e-6):
+                counter+=1
+        return counter/x.shape[0]
 
     def data_augmentation(self, images):
         '''
@@ -159,7 +247,8 @@ class LeNet(object):
         比如把6旋转90度变成了9，但是仍然标签为6 就不合理了
         '''
         return images
-
+    def compute_loss(self,pred,label):#loss用均方和
+        return 2*(pred-label)
     def fit(
         self,
         train_image,
@@ -179,12 +268,18 @@ class LeNet(object):
             train_image = self.data_augmentation(train_image)
             ## 随机打乱 train_image 的顺序， 但是注意train_image 和 test_label 仍需对应
             '''
-            # 1. 一次forward，bachword肯定不能是所有的图像一起,
+            # 1. 一次forward，backward肯定不能是所有的图像一起,
             因此需要根据 batch_size 将 train_image, 和 train_label 分成: [ batch0 | batch1 | ... | batch_last]
             '''
             batch_images = [] # 请实现 step #1
             batch_labels = [] # 请实现 step #1
-
+            max_size_int=int(train_image.shape[0]/batch_size)
+            for i in range(max_size_int):
+                batch_images.append(train_image[batch_size*i:batch_size*(i+1)])
+                batch_labels.append(train_label[batch_size*i:batch_size*(i+1)])
+            if(max_size_int*batch_size<train_image.shape[0]):
+                batch_images.append(train_image[batch_size*max_size_int:])
+                batch_labels.append(train_label[batch_size*max_size_int:])
             last = time.time() #计时开始
             for imgs, labels in zip(batch_images, batch_labels):
                 '''
@@ -194,7 +289,9 @@ class LeNet(object):
                 3. pred 和 labels做一次 loss eg. error = self.compute_loss(pred, labels)
                 4. 做一次backward， 更新网络权值  eg. self.backward(error, lr=1e-3)
                 '''
-                pass
+                pred=self.forward(imgs)
+                error=self.compute_loss(pred, labels)
+                self.backward(error,lr)
             duration = time.time() - last
             sum_time += duration
 
@@ -202,7 +299,7 @@ class LeNet(object):
                 accuracy = self.evaluate(test_image, test_label)
                 print("epoch{} accuracy{}".format(epoch, accuracy))
                 accuracies.append(accuracy)
-
+            print(epoch)
         avg_time = sum_time / epoches
         return avg_time, accuracies
 
