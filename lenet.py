@@ -36,7 +36,7 @@ class Conv():
         self.size=size
         self.channel=channel
         self.activation=activation
-        self.kernel=np.random.random((num,size,size,channel))#N*W*H*C
+        self.kernel=np.random.uniform(-0.5,0.5,(num,size,size,channel))#N*W*H*C
     def forward(self,origin):
         self.post=origin#W*H*C
         self._forward=np.zeros((origin.shape[0]-self.size+1,origin.shape[1]-self.size+1,self.num))
@@ -108,7 +108,7 @@ class Fc():
         self.innum=innum
         self.outnum=outnum
         self.activation=activation
-        self.w=np.random.random((innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
+        self.w=np.random.uniform(-0.5,0.5,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
     def forward(self,origin):
         self.post=origin#post应是一个行向量
         self._forward=self.activation.forward(self.post.dot(self.w))
@@ -185,6 +185,7 @@ class LeNet(object):
         self.softmax_forward=[]
 
         for i in range(x.shape[0]):
+            
             self.conv_1_forward.append(self.conv_1.forward(x[i]))
             self.avg_1_forward.append(self.avg_1.forward(self.conv_1_forward[i]))
             self.conv_2_forward.append(self.conv_2.forward(self.avg_1_forward[i]))
@@ -210,15 +211,17 @@ class LeNet(object):
         self.fc_3_backward=[]
         self.softmax_backward=[]
         for i in range(error.shape[0]):#这里error的shape为（N,10)
+
             self.softmax_backward.append(self.softmax.backward(error[i]))
             self.fc_3_backward.append(self.fc_3.backward(self.softmax_backward[i],lr))
             self.fc_2_backward.append(self.fc_2.backward(self.fc_3_backward[i],lr))
             self.fc_1_backward.append(self.fc_1.backward(self.fc_2_backward[i],lr))
+
             self.avg_2_backward.append(self.avg_2.backward(self.fc_1_backward[i].reshape((4,4,16))))
             self.conv_2_backward.append(self.conv_2.backward(self.avg_2_backward[i],lr))
+            
             self.avg_1_backward.append(self.avg_1.backward(self.conv_2_backward[i]))
             self.conv_1_backward.append(self.conv_1.backward(self.avg_1_backward[i],lr))
-        
     def evaluate(self, x, labels):
         """
         x是测试样本， shape 是BCHW
@@ -235,7 +238,7 @@ class LeNet(object):
         counter=0
         result=self.forward(x)
         for i in range(x.shape[0]):    
-            if(np.sqrt(np.sum((result[i]-labels[i])**2))<=1e-6):
+            if(np.sqrt(np.sum((result[i]-labels[i])**2))<=1e-2):
                 counter+=1
         return counter/x.shape[0]
 
@@ -289,9 +292,12 @@ class LeNet(object):
                 3. pred 和 labels做一次 loss eg. error = self.compute_loss(pred, labels)
                 4. 做一次backward， 更新网络权值  eg. self.backward(error, lr=1e-3)
                 '''
+                pre=time.time()
                 pred=self.forward(imgs)
+                print(pred)
                 error=self.compute_loss(pred, labels)
                 self.backward(error,lr)
+                print(time.time()-pre)
             duration = time.time() - last
             sum_time += duration
 

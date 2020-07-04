@@ -11,9 +11,8 @@ def normalize_image(images):
     ''' 对图像做归一化处理 '''
     result=np.zeros(images.shape)
     for i in range(0,images.shape[0]):
-        mean=np.mean(images[i])#均值
-        std=np.std(images[i],ddof=1)#方差
-        result[i]=(images[i]-mean)/std#零均值，一方差
+        result[i]=images[i]/(np.max(images[i])-np.min(images[i]))
+        result[i]-=0.5
     images=result
     return images
 
@@ -52,9 +51,9 @@ def main():
 
     net = LeNet()
 
-    net.fit(x_train, y_train, x_test, y_test, epoches=10, batch_size=16, lr=1e-3)
+    net.fit(x_train[:1000], y_train[:1000], x_test[:100], y_test[:100], epoches=10, batch_size=16, lr=1e-3)
 
-    accu = net.evaluate(x_test, labels=y_test)
+    accu = net.evaluate(x_test[:100], labels=y_test[:100])
     print("final accuracy {}".format(accu))
 
 
