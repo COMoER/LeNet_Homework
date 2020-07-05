@@ -12,7 +12,7 @@ def normalize_image(images):
     result=np.zeros(images.shape)
     for i in range(0,images.shape[0]):
         result[i]=images[i]/(np.max(images[i])-np.min(images[i]))
-        result[i]-=0.5
+        #result[i]-=0.5
     images=result
     return images
 
@@ -51,7 +51,7 @@ def main():
 
     net = LeNet()
 
-    net.fit(x_train[:1000], y_train[:1000], x_test[:100], y_test[:100], epoches=10, batch_size=16, lr=1e-3)
+    net.fit(x_train[:1000], y_train[:1000], x_test[:100], y_test[:100], epoches=10, batch_size=16, lr=1e-6)
 
     accu = net.evaluate(x_test[:100], labels=y_test[:100])
     print("final accuracy {}".format(accu))

@@ -36,41 +36,31 @@ class Conv():
         self.size=size
         self.channel=channel
         self.activation=activation
-        self.kernel=np.random.uniform(-0.5,0.5,(num,size,size,channel))#N*W*H*C
+        self.kernel=np.random.uniform(-1,1,(num,channel,size,size))#N*C*W*H
+    def conv_operation(self,post,kernel):#post C*H*W kernel(N,C,H,W)
+        C,H,W=post.shape
+        S_K,C_K=(kernel.shape[2],kernel.shape[0])
+        kernel=kernel.reshape((C_K,C*(S_K**2)))
+        mat=np.zeros((C*(S_K**2),(H-(S_K-1))*(W-(S_K-1))))
+        for i in range(H-(S_K-1)):
+                for j in range(W-(S_K-1)):
+                    mat[:,i*j]+=post[:,i:(i+S_K),j:(j+S_K)].reshape(C*S_K**2)
+        return (kernel.dot(mat)).reshape(C_K,H-(S_K-1),W-(S_K-1))
     def forward(self,origin):
-        self.post=origin#W*H*C
-        self._forward=np.zeros((origin.shape[0]-self.size+1,origin.shape[1]-self.size+1,self.num))
-        for i in range(0,self.num):
-            for j in range(0,origin.shape[0]-(self.size-1)):
-                for k in range(0,origin.shape[1]-(self.size-1)):
-                    conv_sum=np.sum(origin[j:(j+self.size),k:(k+self.size)]*self.kernel[i])
-                    self._forward[j,k,i]=self.activation.forward(conv_sum)
-        return self._forward
+        if(len(origin.shape)==2):#防止通道数为1使shape不规范
+            origin=origin.reshape((1,origin.shape[0],origin.shape[1]))
+        self.post=origin#C*H*W
+        
+        self._forward=self.activation.forward(self.conv_operation(self.post,self.kernel))
+        return self._forward#N*H*W
     def backward(self,error,learning_rate):
-        self.db=error*self.activation.backward(self._forward)#W*H*C
+        self.db=error*self.activation.backward(self._forward)#N*H*W
         self.dw=np.zeros(self.kernel.shape)
-        for i in range(0,self.num):#self.post与self.db的卷积
-            for j in range(0,self.post.shape[0]-(self.db.shape[0]-1)):
-                for k in range(0,self.post.shape[1]-(self.db.shape[0]-1)):
-                    if(len(self.post.shape)==2):
-                        self.dw[i,j,k]=np.sum(self.post[j:(j+self.db.shape[0]),k:(k+self.db.shape[0])]*self.db[:,:,i])
-                    else:
-                        for p in range(self.post.shape[2]):
-                            self.dw[i,j,k,p]=np.sum(self.post[j:(j+self.db.shape[0]),k:(k+self.db.shape[0]),p]*self.db[:,:,i])
-        self.backerror=np.zeros(self.post.shape)
-        self.dB=np.zeros((self.db.shape[0]+2,self.db.shape[1]+2,self.db.shape[2]))
-        self.dB[1:self.dB.shape[0]-1,1:self.dB.shape[1]-1]=self.db#zero_pad=1
-        #卷积核的旋转
-        self.pi_kernel=np.zeros((self.kernel.shape[3],self.kernel.shape[1],self.kernel.shape[2],self.kernel.shape[0]))#(input_channel,W,H,output_channel)
-        for k in range(self.kernel.shape[0]):
-            for i in range(self.kernel.shape[1]):
-                for j in range(self.kernel.shape[2]):
-                    self.pi_kernel[:,self.kernel.shape[1]-1-i,self.kernel.shape[2]-1-j,k]=self.kernel[k,i,j]
-        self.backerror=np.zeros((self.post.shape[0],self.post.shape[1],self.channel))#W*H*C
-        for i in range(0,self.pi_kernel.shape[0]):#self.dB与self.pi_kernel的卷积
-            for j in range(0,self.dB.shape[0]-(self.pi_kernel.shape[1]-1)):
-                for k in range(0,self.dB.shape[1]-(self.pi_kernel.shape[2]-1)):
-                    self.backerror[j,k,i]=np.sum(self.dB[j:(j+self.pi_kernel.shape[1]),k:(k+self.pi_kernel.shape[1])]*self.pi_kernel[i])
+        for p in range(self.post.shape[0]):#self.post与self.db的卷积
+            self.dw[:,p,:,:]+=self.conv_operation(self.post[p,:,:].reshape(1,self.post.shape[1],self.post.shape[2]),self.db.reshape((self.db.shape[0],1,self.db.shape[1],self.db.shape[2])))
+        self.dB=np.pad(self.db,((0,0),(self.size-1,self.size-1),(self.size-1,self.size-1)))#zero_pad=size-1
+        self.pi_kernel=np.rot90(self.kernel,2)#卷积核的旋转
+        self.backerror=self.conv_operation(self.dB,self.pi_kernel.transpose(1,0,2,3))#self.dB与self.pi_kernel的卷积
         self.kernel-=learning_rate*self.dw#更新权值
         return self.backerror
 #Avgpool类
@@ -78,17 +68,19 @@ class Avgpool():
     def __init__(self,size):
         self.size=size
     def forward(self,origin):
-        self.input=origin
-        self._forward=np.zeros((int(origin.shape[0]/self.size),int(origin.shape[1]/self.size),origin.shape[2]))#origin的维度是W*H*C
-        for i in range(0,int(origin.shape[0]/self.size)):
-            for j in range(0,int(origin.shape[1]/self.size)):
-                self._forward[i,j]=np.mean(origin[self.size*i:(self.size*i+self.size),self.size*j:(self.size*j+self.size)])
+        self.input=origin#origin的维度是C*H*W
+        C=origin.shape[0]
+        H=int(origin.shape[1]/self.size)
+        W=int(origin.shape[2]/self.size)#OUTPUT SIZE C*H*W
+        self.col=np.zeros((C,H*W,self.size**2))
+        self.mean_kernel=np.ones((self.size**2,1))/(self.size**2)
+        for i in range(H):
+            for j in range(W):
+                self.col[:,i*W+j,:]=origin[:,self.size*i:(self.size*i+self.size),self.size*j:(self.size*j+self.size)].reshape(C,self.size**2)
+        self._forward=self.col.dot(self.mean_kernel).reshape(C,H,W)
         return self._forward
     def backward(self,error):
-        self.backerror=np.zeros(self.input.shape)
-        for i in range(int(self.input.shape[0]/self.size)):
-            for j in range(int(self.input.shape[1]/self.size)):
-                self.backerror[self.size*i:(self.size*i+self.size),self.size*j:(self.size*j+self.size)]=error[i,j]/(self.size**2)
+        self.backerror=error.repeat(self.size,axis=1).repeat(self.size,axis=2)/self.size**2
         return self.backerror
 #Softmax类
 class Softmax():
@@ -96,8 +88,7 @@ class Softmax():
         self.length=length
     def forward(self,vector):#vector是一个长度为length的行向量
         self.post=vector
-        softmax_sum=np.sum(np.exp(vector))
-        self._forward= np.zeros(self.length) if softmax_sum==0 else np.array([np.exp(val)/softmax_sum for val in vector])
+        self._forward=np.array([1/(np.sum(np.exp(vector-val))) for val in vector])#防止溢出
         return self._forward
     def backward(self,error):#error是行向量
         self.backerror=((self._forward.T)*(np.eye(self.post.shape[0])-self._forward)).dot(error.T)
@@ -108,7 +99,7 @@ class Fc():
         self.innum=innum
         self.outnum=outnum
         self.activation=activation
-        self.w=np.random.uniform(-0.5,0.5,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
+        self.w=np.random.uniform(-1,1,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
     def forward(self,origin):
         self.post=origin#post应是一个行向量
         self._forward=self.activation.forward(self.post.dot(self.w))
@@ -210,14 +201,14 @@ class LeNet(object):
         self.fc_2_backward=[]
         self.fc_3_backward=[]
         self.softmax_backward=[]
+        
         for i in range(error.shape[0]):#这里error的shape为（N,10)
-
             self.softmax_backward.append(self.softmax.backward(error[i]))
             self.fc_3_backward.append(self.fc_3.backward(self.softmax_backward[i],lr))
             self.fc_2_backward.append(self.fc_2.backward(self.fc_3_backward[i],lr))
             self.fc_1_backward.append(self.fc_1.backward(self.fc_2_backward[i],lr))
 
-            self.avg_2_backward.append(self.avg_2.backward(self.fc_1_backward[i].reshape((4,4,16))))
+            self.avg_2_backward.append(self.avg_2.backward(self.fc_1_backward[i].reshape((16,4,4))))
             self.conv_2_backward.append(self.conv_2.backward(self.avg_2_backward[i],lr))
             
             self.avg_1_backward.append(self.avg_1.backward(self.conv_2_backward[i]))
@@ -294,9 +285,9 @@ class LeNet(object):
                 '''
                 pre=time.time()
                 pred=self.forward(imgs)
-                print(pred)
                 error=self.compute_loss(pred, labels)
                 self.backward(error,lr)
+                print(pred[0])
                 print(time.time()-pre)
             duration = time.time() - last
             sum_time += duration
