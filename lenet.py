@@ -36,7 +36,7 @@ class Conv():
         self.size=size
         self.channel=channel
         self.activation=activation
-        self.kernel=np.random.uniform(-1,1,(num,channel,size,size))#N*C*W*H
+        self.kernel=np.random.normal(0,1e-1,(num,channel,size,size))#N*C*W*H
     def conv_operation(self,post,kernel):#post C*H*W kernel(N,C,H,W)
         C,H,W=post.shape
         S_K,C_K=(kernel.shape[2],kernel.shape[0])
@@ -87,11 +87,11 @@ class Softmax():
     def __init__(self,length):
         self.length=length
     def forward(self,vector):#vector是一个长度为length的行向量
-        self.post=vector
-        self._forward=np.array([1/(np.sum(np.exp(vector-val))) for val in vector])#防止溢出
+        self.post=vector-np.max(vector)
+        self._forward=np.exp(self.post)/np.sum(np.exp(self.post))
         return self._forward
     def backward(self,error):#error是行向量
-        self.backerror=((self._forward.T)*(np.eye(self.post.shape[0])-self._forward)).dot(error.T)
+        self.backerror=(self._forward.reshape((self.length,1))*(np.eye(self.post.shape[0])-self._forward)).dot(error)
         return self.backerror
 #Fc类
 class Fc():
@@ -99,7 +99,7 @@ class Fc():
         self.innum=innum
         self.outnum=outnum
         self.activation=activation
-        self.w=np.random.uniform(-1,1,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
+        self.w=np.random.normal(0,1e-1,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
     def forward(self,origin):
         self.post=origin#post应是一个行向量
         self._forward=self.activation.forward(self.post.dot(self.w))
@@ -107,7 +107,7 @@ class Fc():
     def backward(self,error,learning_rate):
         self.miderror=error*self.activation.backward(self._forward)
         self.dw=self.post.reshape((self.post.shape[0],1)).dot(self.miderror.reshape(1,self.miderror.shape[0]))
-        self.backerror=(self.w.dot(self.miderror.T)).T
+        self.backerror=self.w.dot(self.miderror)
         self.w-=learning_rate*self.dw
         return self.backerror
 ## 在原 LeNet-5上进行少许修改后的网路结构
@@ -185,6 +185,10 @@ class LeNet(object):
             self.fc_2_forward.append(self.fc_2.forward(self.fc_1_forward[i]))
             self.fc_3_forward.append(self.fc_3.forward(self.fc_2_forward[i]))
             self.softmax_forward.append(self.softmax.forward(self.fc_3_forward[i]))
+
+            #if(np.isnan(self.softmax._forward[0])):
+            #        print(self.softmax.post)
+
         return self.softmax_forward#是一个列表包含所有样本的one-hot
 
     def backward(self, error, lr=1.0e-3):
@@ -229,7 +233,7 @@ class LeNet(object):
         counter=0
         result=self.forward(x)
         for i in range(x.shape[0]):    
-            if(np.sqrt(np.sum((result[i]-labels[i])**2))<=1e-2):
+            if(np.argmax(result[i])==np.argmax(labels[i])):
                 counter+=1
         return counter/x.shape[0]
 
@@ -242,7 +246,8 @@ class LeNet(object):
         '''
         return images
     def compute_loss(self,pred,label):#loss用均方和
-        return 2*(pred-label)
+        error= 2 * (pred - label) / pred[0].shape[0]
+        return error
     def fit(
         self,
         train_image,
@@ -283,12 +288,13 @@ class LeNet(object):
                 3. pred 和 labels做一次 loss eg. error = self.compute_loss(pred, labels)
                 4. 做一次backward， 更新网络权值  eg. self.backward(error, lr=1e-3)
                 '''
-                pre=time.time()
+                #pre=time.time()
                 pred=self.forward(imgs)
+                #if(np.isnan(pred[0][0])):
+                #    print(self.softmax.post)
                 error=self.compute_loss(pred, labels)
                 self.backward(error,lr)
-                print(pred[0])
-                print(time.time()-pre)
+                #print(time.time()-pre)
             duration = time.time() - last
             sum_time += duration
 

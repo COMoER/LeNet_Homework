@@ -11,8 +11,7 @@ def normalize_image(images):
     ''' 对图像做归一化处理 '''
     result=np.zeros(images.shape)
     for i in range(0,images.shape[0]):
-        result[i]=images[i]/(np.max(images[i])-np.min(images[i]))
-        #result[i]-=0.5
+        result[i]=(images[i]-np.min(images[i]))/(np.max(images[i])-np.min(images[i]))
     images=result
     return images
 
@@ -32,9 +31,6 @@ def one_hot_labels(labels):
 def main():
     # image shape: N x H x W, pixel [0, 255]
     # label shape: N x 10
-    ###
-    np.seterr(invalid='ignore')#这一行是由于numpy会对relu和softmax的运算显示可能无效警告，然而这个风险是可忽略的
-    ###
     with np.load('mnist.npz', allow_pickle=True) as f:
         x_train, y_train = f['x_train'], f['y_train']
         x_test, y_test = f['x_test'], f['y_test']
@@ -51,9 +47,9 @@ def main():
 
     net = LeNet()
 
-    net.fit(x_train[:1000], y_train[:1000], x_test[:100], y_test[:100], epoches=10, batch_size=16, lr=1e-6)
+    net.fit(x_train, y_train, x_test, y_test, epoches=10, batch_size=16, lr=1e-3)
 
-    accu = net.evaluate(x_test[:100], labels=y_test[:100])
+    accu = net.evaluate(x_test, labels=y_test)
     print("final accuracy {}".format(accu))
 
 
