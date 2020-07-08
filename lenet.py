@@ -36,8 +36,8 @@ class Conv():
         self.size=size
         self.channel=channel
         self.activation=activation
-        self.kernel=np.random.normal(0,1e-1,(num,channel,size,size))#N*C*W*H
-        self.b=np.random.normal(0,1e-1,(num,1,1))#bias N*1*1（便于broadcasting）
+        self.kernel=np.random.normal(0,1e-2,(num,channel,size,size))#N*C*W*H
+        self.b=np.random.normal(0,1e-2,(num,1,1))#bias N*1*1（便于broadcasting）
     def conv_operation(self,post,kernel):#post C*H*W kernel(N,C,H,W)
         C,H,W=post.shape
         S_K,C_K=(kernel.shape[2],kernel.shape[0])
@@ -93,7 +93,7 @@ class Softmax():
         self._forward=np.exp(self.post)/np.sum(np.exp(self.post))
         return self._forward
     def backward(self,error):#error是行向量
-        self.backerror=(self._forward.reshape((self.length,1))*(np.eye(self.post.shape[0])-self._forward)).dot(error)
+        self.backerror=error#因为交叉熵损失函数在最后直接计算比较方便，这里的error无需任何计算
         return self.backerror
 #Fc类
 class Fc():
@@ -101,8 +101,8 @@ class Fc():
         self.innum=innum
         self.outnum=outnum
         self.activation=activation
-        self.w=np.random.normal(0,1e-1,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
-        self.b=np.random.normal(0,1e-1,outnum)#bias
+        self.w=np.random.normal(0,1e-2,(innum,outnum))#w矩阵的第i行第j列是上一层的第i个元素到这一层的第j个元素的权重
+        self.b=np.random.normal(0,1e-2,outnum)#bias
     def forward(self,origin):
         self.post=origin#post应是一个行向量
         self._forward=self.activation.forward(self.post.dot(self.w)+self.outnum)
@@ -190,8 +190,8 @@ class LeNet(object):
             self.fc_3_forward.append(self.fc_3.forward(self.fc_2_forward[i]))
             self.softmax_forward.append(self.softmax.forward(self.fc_3_forward[i]))
 
-            #if(np.isnan(self.softmax._forward[0])):
-            #        print(self.softmax.post)
+            if(np.isnan(self.softmax._forward[0])):
+                    print(self.softmax.post)
 
         return self.softmax_forward#是一个列表包含所有样本的one-hot
 
@@ -249,8 +249,8 @@ class LeNet(object):
         比如把6旋转90度变成了9，但是仍然标签为6 就不合理了
         '''
         return images
-    def compute_loss(self,pred,label):#loss用均方和
-        error= 2 * (pred - label) / pred[0].shape[0]
+    def compute_loss(self,pred,label):#loss用交叉熵
+        error=pred-label
         return error
     def fit(
         self,
@@ -292,13 +292,13 @@ class LeNet(object):
                 3. pred 和 labels做一次 loss eg. error = self.compute_loss(pred, labels)
                 4. 做一次backward， 更新网络权值  eg. self.backward(error, lr=1e-3)
                 '''
-                #pre=time.time()
+                pre=time.time()
                 pred=self.forward(imgs)
-                #if(np.isnan(pred[0][0])):
-                #    print(self.softmax.post)
+                if(np.isnan(pred[0][0])):
+                    print(self.softmax.post)
                 error=self.compute_loss(pred, labels)
                 self.backward(error,lr)
-                #print(time.time()-pre)
+                print(time.time()-pre)
             duration = time.time() - last
             sum_time += duration
 

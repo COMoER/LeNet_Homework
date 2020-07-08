@@ -47,7 +47,7 @@ def main():
 
     net = LeNet()
 
-    net.fit(x_train, y_train, x_test, y_test, epoches=10, batch_size=16, lr=1e-3)
+    net.fit(x_train[:1000], y_train[:1000], x_test[:100], y_test[:100], epoches=10, batch_size=16, lr=5e-5)
 
     accu = net.evaluate(x_test, labels=y_test)
     print("final accuracy {}".format(accu))
