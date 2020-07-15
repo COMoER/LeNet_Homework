@@ -46,7 +46,7 @@ def main():
     y_test = one_hot_labels(y_test)
 
     net = LeNet()
-    net.fit(x_train, y_train, x_test, y_test, epoches=10, batch_size=16, lr=5e-4)#测试时该初值效果较好
+    net.fit(x_train, y_train, x_test, y_test, epoches=10, batch_size=16, lr=1e-3)
     accu = net.evaluate(x_test, labels=y_test)
 
     print("final accuracy {}".format(accu))

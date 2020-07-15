@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import numpy as np
 import time
-#import matplotlib.pyplot as plt
-#from tqdm import tqdm
 
 
 # Example Sigmoid
@@ -289,7 +287,6 @@ class LeNet(object):
                 batch_images.append(train_image[batch_size*max_size_int:])
                 batch_labels.append(train_label[batch_size*max_size_int:])
             last = time.time() #计时开始
-            #losssum =[]
             for imgs, labels in zip(batch_images, batch_labels):
                 '''
                 这里我只是给了一个范例， 大家在实现上可以不一定要按照这个严格的 2,3,4步骤
@@ -303,14 +300,8 @@ class LeNet(object):
                     print(self.softmax.post)
                 error,loss=self.compute_loss(pred, labels)
                 self.backward(error,lr)
-                #losssum.append(np.mean(loss))
-                lr=lr*0.999
-            #los=np.array(losssum)
-            #plt.figure(figsize=(8,8))
-            #plt.plot(range(los.shape[0]),los,'-x')
-            #plt.show()
+                lr=lr*0.999#学习率衰减
             duration = time.time() - last
-            #print('epoch%d\'s time: %.3f'%(epoch,duration))
             sum_time += duration
 
             if epoch % 5 == 0:
