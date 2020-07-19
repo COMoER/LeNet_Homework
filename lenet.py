@@ -273,6 +273,10 @@ class LeNet(object):
             ## 可选操作，数据增强
             train_image = self.data_augmentation(train_image)
             ## 随机打乱 train_image 的顺序， 但是注意train_image 和 test_label 仍需对应
+            state=np.random.get_state()
+            np.random.shuffle(train_image)
+            np.random.set_state(state)
+            np.random.shuffle(train_label)
             '''
             # 1. 一次forward，backward肯定不能是所有的图像一起,
             因此需要根据 batch_size 将 train_image, 和 train_label 分成: [ batch0 | batch1 | ... | batch_last]
