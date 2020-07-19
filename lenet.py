@@ -300,10 +300,9 @@ class LeNet(object):
                     print(self.softmax.post)
                 error,loss=self.compute_loss(pred, labels)
                 self.backward(error,lr)
-                lr=lr*0.999#学习率衰减
             duration = time.time() - last
             sum_time += duration
-
+            lr=lr*0.9#每个epoch学习率衰减
             if epoch % 5 == 0:
                 accuracy = self.evaluate(test_image, test_label)
                 print("epoch{} accuracy{}".format(epoch, accuracy))
